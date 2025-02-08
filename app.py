@@ -508,11 +508,24 @@ def garbage_collection():
                         try:
                             with open(manifest_path, 'rb') as f:
                                 manifest_data = json.loads(f.read())
+                                
+                                # 添加 config blob
+                                if 'config' in manifest_data and 'digest' in manifest_data['config']:
+                                    used_blobs.add(manifest_data['config']['digest'].replace('sha256:', ''))
+                                
+                                # 添加 layers
                                 if 'layers' in manifest_data:
                                     for layer in manifest_data['layers']:
                                         if 'digest' in layer:
                                             used_blobs.add(layer['digest'].replace('sha256:', ''))
-                        except:
+                                
+                                # 添加 manifests (用于 manifest lists)
+                                if 'manifests' in manifest_data:
+                                    for manifest in manifest_data['manifests']:
+                                        if 'digest' in manifest:
+                                            used_blobs.add(manifest['digest'].replace('sha256:', ''))
+                        except Exception as e:
+                            logger.error(f"Error processing manifest {manifest_path}: {str(e)}")
                             continue
         
         # 删除未使用的blobs
@@ -523,14 +536,19 @@ def garbage_collection():
             if blob not in used_blobs:
                 blob_path = os.path.join(blobs_dir, blob)
                 if os.path.isfile(blob_path):
-                    os.remove(blob_path)
-                    removed_blobs.append(blob)
+                    try:
+                        os.remove(blob_path)
+                        removed_blobs.append(blob)
+                        logger.info(f"Removed unused blob: {blob}")
+                    except Exception as e:
+                        logger.error(f"Error removing blob {blob}: {str(e)}")
         
         # 清理uploads目录
         uploads_dir = os.path.join(REGISTRY_PATH, "uploads")
         if os.path.exists(uploads_dir):
             shutil.rmtree(uploads_dir)
             os.makedirs(uploads_dir)
+            logger.info("Cleaned uploads directory")
         
         return jsonify({
             'status': 'success',
